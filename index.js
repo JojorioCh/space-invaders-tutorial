@@ -1,15 +1,16 @@
-// set up canvas easier
+//! set up the use of canvas easier
+const scoreEl = document.querySelector("#scoreEl");
 const canvas = document.querySelector("canvas");
 console.log(canvas);
 
-// create context
+//! create context i.e. that it is a 2d game
 const c = canvas.getContext("2d");
 
-// This is to make sure that we can get the full browser width and height
-canvas.width = innerWidth;
-canvas.height = innerHeight;
+//! This is to make sure that we can get the full browser width and height
+canvas.width = 1024;
+canvas.height = 576;
 
-// Create the player for the screen
+//! Create the player for the screen
 class Player {
   constructor() {
     this.velocity = {
@@ -18,6 +19,7 @@ class Player {
     };
 
     this.rotation = 0;
+    this.opacity = 1;
 
     const image = new Image();
     image.src = "./components/images/spaceship.png";
@@ -32,11 +34,10 @@ class Player {
       };
     };
   }
+
   draw() {
-    // The below code is for debugging purposes
-    // c.fillStyle = "red";
-    // c.fillRect(this.position.x, this.position.y, this.width, this.height);
     c.save();
+    c.globalAlpha = this.opacity;
     c.translate(
       player.position.x + player.width / 2,
       player.position.y + player.height / 2
@@ -57,6 +58,7 @@ class Player {
     );
     c.restore();
   }
+
   update() {
     if (this.image) {
       this.draw();
@@ -65,6 +67,7 @@ class Player {
   }
 }
 
+//! Player projectile code
 class Projectile {
   constructor({ position, velocity }) {
     this.position = position;
@@ -87,6 +90,38 @@ class Projectile {
   }
 }
 
+//! coding for explosion for when we or enemy is hit
+class Particle {
+  constructor({ position, velocity, radius, color, fades }) {
+    this.position = position;
+    this.velocity = velocity;
+
+    this.radius = radius;
+    this.color = color;
+    this.opacity = 1;
+    this.fades = fades;
+  }
+
+  draw() {
+    c.save();
+    c.globalAlpha = this.opacity;
+    c.beginPath();
+    c.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
+    c.fillStyle = this.color;
+    c.fill();
+    c.closePath();
+    c.restore();
+  }
+
+  update() {
+    this.draw();
+    this.position.x += this.velocity.x;
+    this.position.y += this.velocity.y;
+    if (this.fades) this.opacity -= 0.01;
+  }
+}
+
+//! code for the enemy's bullets to be displayed on screen
 class InvaderProjectile {
   constructor({ position, velocity }) {
     this.position = position;
@@ -106,7 +141,7 @@ class InvaderProjectile {
     this.position.y += this.velocity.y;
   }
 }
-// Create the player for the screen
+//! Create the enemy for the screen
 class Invader {
   constructor({ position }) {
     this.velocity = {
@@ -127,11 +162,8 @@ class Invader {
       };
     };
   }
-  draw() {
-    // The below code is for debugging purposes
-    // c.fillStyle = "red";
-    // c.fillRect(this.position.x, this.position.y, this.width, this.height);
 
+  draw() {
     c.drawImage(
       this.image,
       this.position.x,
@@ -208,14 +240,22 @@ class Grid {
   }
 }
 
-// Displays the player on the screen
+//! Displays the player on the screen
 const player = new Player();
 
-// Display the projectiles on the screen
+//! Display the projectiles on the screen
 const projectiles = [];
+
+//! Display the enemy's projectiles on the screen
 const invaderProjectiles = [];
+
+//! Display enemy on the screen in the shape of grids
 const grids = [];
 
+//! Array for enemy explosions
+const particles = [];
+
+//! code to set up our key inputs to begin with when game loads
 const keys = {
   a: {
     pressed: false,
@@ -228,16 +268,77 @@ const keys = {
   },
 };
 
+//! code to set up frame rates and at what speed our enemies will spawn in
 let frames = 0;
 let randomInterval = Math.floor(Math.random() * 1000 + 1000);
-console.log(randomInterval);
+
+//! game over code
+let game = {
+  over: false,
+  active: true,
+};
+
+//! score code
+let score = 0;
+
+//! code is for creating a starry background
+for (let i = 0; i < 100; i++) {
+  particles.push(
+    new Particle({
+      position: {
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+      },
+      velocity: {
+        x: 0,
+        y: 0.3,
+      },
+      radius: Math.random() * 2,
+      color: "white",
+    })
+  );
+}
+
+function createParticles({ object, color, fades }) {
+  for (let i = 0; i < 15; i++) {
+    particles.push(
+      new Particle({
+        position: {
+          x: object.position.x + object.width / 2,
+          y: object.position.y + object.height / 2,
+        },
+        velocity: {
+          x: (Math.random() - 0.5) * 2,
+          y: (Math.random() - 0.5) * 2,
+        },
+        radius: Math.random() * 3,
+        color: color || "#BAA0DE",
+        fades,
+      })
+    );
+  }
+}
 
 function animate() {
+  if (!game.active) return;
   requestAnimationFrame(animate);
   c.fillStyle = "black";
   c.fillRect(0, 0, canvas.width, canvas.height);
   player.update();
 
+  particles.forEach((particle, i) => {
+    if (particle.position.y - particle.radius >= canvas.height) {
+      particle.position.x = Math.random() * canvas.width;
+      particle.position.y = -particle.radius;
+    }
+    if (particle.opacity <= 0) {
+      setTimeout(() => {
+        particles.splice(i, 1);
+      });
+    } else {
+      particle.update();
+    }
+  });
   invaderProjectiles.forEach((invaderProjectile, index) => {
     if (
       invaderProjectile.position.y + invaderProjectile.height >=
@@ -249,17 +350,33 @@ function animate() {
     } else {
       invaderProjectile.update();
     }
+
+    //! This is to remove the enemy projectile when it hits the player
     if (
       invaderProjectile.position.y + invaderProjectile.height >=
         player.position.y &&
       invaderProjectile.position.x + invaderProjectile.width >=
-        player.position.x
+        player.position.x &&
+      invaderProjectile.position.x <= player.position.x + player.width
     ) {
       console.log("you lose");
+      setTimeout(() => {
+        invaderProjectiles.splice(index, 1);
+        player.opacity = 0;
+        game.over = true;
+      }, 0);
+      setTimeout(() => {
+        game.active = false;
+      }, 2000);
+      createParticles({
+        object: player,
+        color: "white",
+        fades: true,
+      });
     }
   });
-  console.log(invaderProjectiles);
 
+  //! For removing projectiles once it leaves the screen
   projectiles.forEach((projectile, index) => {
     if (projectile.position.y + projectile.radius <= 0) {
       setTimeout(() => {
@@ -273,6 +390,7 @@ function animate() {
   grids.forEach((grid) => {
     grid.update();
 
+    //! spawning enemy projectiles
     if (frames % 100 === 0 && grid.invaders.length > 0) {
       grid.invaders[Math.floor(Math.random() * grid.invaders.length)].shoot(
         invaderProjectiles
@@ -282,6 +400,7 @@ function animate() {
     grid.invaders.forEach((invader, i) => {
       invader.update({ velocity: grid.velocity });
 
+      //! projectiles hit enemy
       projectiles.forEach((projectile, j) => {
         if (
           projectile.position.y - projectile.radius <=
@@ -299,8 +418,14 @@ function animate() {
               (projectile2) => projectile2 === projectile
             );
 
-            //! Remove projectiles and invaders
+            //! Remove projectiles and invaders and update score
             if (invaderFound && projectileFound) {
+              score += 100;
+              console.log(score);
+              scoreEl.innerHTML = score;
+
+              createParticles({ object: invader, fades: true });
+
               grid.invaders.splice(i, 1);
               projectiles.splice(j, 1);
 
@@ -345,6 +470,8 @@ function animate() {
 animate();
 
 addEventListener("keydown", ({ key }) => {
+  if (game.over) return;
+
   switch (key) {
     case "a":
       keys.a.pressed = true;
